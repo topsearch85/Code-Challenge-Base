@@ -21,6 +21,7 @@ var sum_to_n_b = function (n) {
     return sum;
 };
 
+// Recursive
 var sum_to_n_c = function (n) {
     if (n === 0) {
         return 0;

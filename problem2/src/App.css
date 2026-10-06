@@ -1,0 +1,210 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background: #f5f7fb;
+}
+
+.swap-card {
+  width: 100%;
+  max-width: 460px;
+  padding: 28px;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(20, 30, 50, 0.12);
+}
+
+.swap-card.loading {
+  text-align: center;
+  color: #667085;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #101828;
+}
+
+.header p {
+  margin: 6px 0 0;
+  color: #667085;
+  font-size: 14px;
+}
+
+.message {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.message.error {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.message.success {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.token-box {
+  padding: 18px;
+  border: 1px solid #e4e7ec;
+  border-radius: 18px;
+  background: #fafbfc;
+}
+
+.box-header {
+  margin-bottom: 12px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.token-input {
+  display: flex;
+  gap: 12px;
+}
+
+.token-input input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 26px;
+  font-weight: 600;
+  color: #101828;
+}
+
+.token-input input::placeholder {
+  color: #98a2b3;
+}
+
+.token-input select {
+  width: 110px;
+  padding: 0 8px;
+  border: 0;
+  outline: 0;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.token-info {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.token-info img {
+  width: 20px;
+  height: 20px;
+}
+
+.token-info .price {
+  margin-left: auto;
+}
+
+.direction-button {
+  display: block;
+  width: 42px;
+  height: 42px;
+  margin: -8px auto;
+  position: relative;
+  z-index: 2;
+  border: 4px solid #ffffff;
+  border-radius: 50%;
+  background: #101828;
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.direction-button:hover {
+  transform: rotate(180deg);
+}
+
+.rate {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 20px 0;
+  font-size: 13px;
+  color: #667085;
+}
+
+.rate strong {
+  color: #344054;
+  text-align: right;
+}
+
+.submit-button {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 14px;
+  background: #101828;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.submit-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .app {
+    padding: 16px;
+  }
+
+  .swap-card {
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  .token-input input {
+    font-size: 22px;
+  }
+
+  .token-input select {
+    width: 90px;
+  }
+}
+

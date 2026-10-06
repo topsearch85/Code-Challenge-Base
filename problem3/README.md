@@ -41,11 +41,92 @@ The custom hooks `useWalletBalances()` and `usePrices()` are assumed to be defin
 
 ---
 
-## 2. Computational Inefficiencies and Anti-Patterns
+## 2. Issues and How to Improve Them
 
-### 2.1 Incorrect `useMemo` dependency
+The original implementation has a combination of **correctness issues, TypeScript issues, React anti-patterns, and unnecessary computations**.
 
-Original:
+### Issue 1: Undefined variable `lhsPriority`
+
+Original code:
+
+```tsx
+const balancePriority = getPriority(balance.blockchain);
+
+if (lhsPriority > -99) {
+```
+
+`lhsPriority` does not exist in this scope. The variable that was just calculated is `balancePriority`.
+
+This causes a runtime error.
+
+### Improvement
+
+Use:
+
+```tsx
+if (balancePriority > -99) {
+```
+
+---
+
+### Issue 2: `blockchain` is missing from `WalletBalance`
+
+The interface declares:
+
+```tsx
+interface WalletBalance {
+  currency: string;
+  amount: number;
+}
+```
+
+But the code accesses:
+
+```tsx
+balance.blockchain
+```
+
+This is inconsistent with the TypeScript definition.
+
+### Improvement
+
+Add `blockchain` to the interface:
+
+```tsx
+interface WalletBalance {
+  currency: string;
+  amount: number;
+  blockchain: string;
+}
+```
+
+---
+
+### Issue 3: Using `any`
+
+The priority function uses:
+
+```tsx
+const getPriority = (blockchain: any): number => {
+```
+
+Using `any` disables TypeScript's type checking and makes the code less safe.
+
+### Improvement
+
+Use a proper type:
+
+```tsx
+const getPriority = (blockchain: string): number => {
+```
+
+An even stronger solution would be to define a union type containing the supported blockchain names.
+
+---
+
+### Issue 4: Incorrect `useMemo` dependency
+
+The code uses:
 
 ```tsx
 const sortedBalances = useMemo(() => {
@@ -53,21 +134,25 @@ const sortedBalances = useMemo(() => {
 }, [balances, prices]);
 ```
 
-`prices` is not used inside this calculation.
+However, `prices` is not used anywhere inside the `useMemo` calculation.
 
-Therefore, changing prices causes the filtering and sorting operation to run again unnecessarily.
+Therefore, whenever prices change, React unnecessarily recalculates the filtering and sorting of balances.
 
-It should be:
+### Improvement
+
+Only include values used by the calculation:
 
 ```tsx
 }, [balances]);
 ```
 
+The `prices` value is only required when calculating the USD value for each rendered row.
+
 ---
 
-### 2.2 `getPriority()` is recreated on every render
+### Issue 5: `getPriority` is declared inside the component
 
-The function is declared inside the component:
+The function:
 
 ```tsx
 const getPriority = (blockchain: any): number => {
@@ -75,56 +160,70 @@ const getPriority = (blockchain: any): number => {
 };
 ```
 
-A new function is created every time `WalletPage` renders.
+is recreated every time `WalletPage` renders.
 
-Because this function does not depend on component state or props, it can be moved outside the component.
+This is not necessarily a major performance problem because the function is small, but it is unnecessary because it does not depend on component state or props.
+
+### Improvement
+
+Move it outside the component:
+
+```tsx
+const getPriority = (blockchain: string): number => {
+  // ...
+};
+```
 
 This also makes the function easier to test and reuse.
 
----
-
-### 2.3 Unnecessary use of `any`
-
-The original code contains:
-
-```tsx
-(blockchain: any)
-```
-
-This removes TypeScript's type safety.
-
-Since the blockchain is a string, at minimum it should be:
-
-```tsx
-(blockchain: string)
-```
-
-Alternatively, the supported blockchain values can be represented using a union type.
+There is no need to use `useCallback()` for this function because it does not need to be passed as a prop or dependency.
 
 ---
 
-### 2.4 Priority is calculated repeatedly
+### Issue 6: Priority is calculated repeatedly
 
-The code calculates the priority during filtering:
+The priority is calculated during filtering:
 
 ```tsx
 const balancePriority = getPriority(balance.blockchain);
 ```
 
-and then calculates it again during sorting:
+and then calculated again during sorting:
 
 ```tsx
 const leftPriority = getPriority(lhs.blockchain);
 const rightPriority = getPriority(rhs.blockchain);
 ```
 
-The sorting comparator may execute many times, so repeatedly calculating the same value is unnecessary.
+A sort comparator can execute many times, so repeatedly calculating the same priority is unnecessary.
 
-A priority lookup object can make this simpler and more efficient.
+### Improvement
+
+Use a lookup object:
+
+```tsx
+const PRIORITIES: Record<string, number> = {
+  Osmosis: 100,
+  Ethereum: 50,
+  Arbitrum: 30,
+  Zilliqa: 20,
+  Neo: 20,
+};
+```
+
+Then:
+
+```tsx
+const getPriority = (blockchain: string): number => {
+  return PRIORITIES[blockchain] ?? -99;
+};
+```
+
+For very large datasets, the priority can also be calculated once and carried through the filtering/sorting operation.
 
 ---
 
-### 2.5 `formattedBalances` is calculated but never used
+### Issue 7: `formattedBalances` is created but never used
 
 The code creates:
 
@@ -137,61 +236,59 @@ const formattedBalances = sortedBalances.map((balance) => {
 });
 ```
 
-However, the next section maps over `sortedBalances` instead:
+But then renders:
 
 ```tsx
 const rows = sortedBalances.map(...)
 ```
 
-Therefore, `formattedBalances` is unused.
+instead of:
 
-This is also a correctness issue because `WalletRow` expects `formatted`, but `sortedBalances` does not contain that property.
+```tsx
+formattedBalances.map(...)
+```
+
+Therefore, the `formattedBalances` calculation is wasted.
+
+It also means `formatted` is not actually available on the object being passed to `WalletRow`.
+
+### Improvement
+
+Either render `formattedBalances` or combine the formatting step with the filtering and sorting calculation.
+
+Combining them is cleaner because it avoids creating an unnecessary intermediate array.
 
 ---
 
-### 2.6 `FormattedWalletBalance` does not match `sortedBalances`
+### Issue 8: Incorrect TypeScript type for `rows`
 
-The code declares:
+The code says:
 
 ```tsx
 const rows = sortedBalances.map(
   (balance: FormattedWalletBalance, index: number) => {
 ```
 
-But `sortedBalances` contains `WalletBalance`, not `FormattedWalletBalance`.
+But `sortedBalances` contains `WalletBalance` objects, not `FormattedWalletBalance` objects.
 
-Adding a TypeScript annotation to the callback parameter does not change the actual type of the array.
+Simply annotating the callback parameter does not convert the objects into another type.
 
-The correct approach is to map the data into `FormattedWalletBalance` first and then render it.
+### Improvement
+
+Actually transform the objects into `FormattedWalletBalance`:
+
+```tsx
+.map((balance) => ({
+  ...balance,
+  formatted: balance.amount.toFixed(),
+}))
+```
+
+Then map over that result.
 
 ---
 
-### 2.7 `balance.blockchain` is missing from the interface
-
-The interface declares:
-
-```tsx
-interface WalletBalance {
-  currency: string;
-  amount: number;
-}
-```
-
-But the component uses:
-
-```tsx
-balance.blockchain
-```
-
-The interface should include:
-
-```tsx
-blockchain: string;
-```
-
----
-
-### 2.8 Array index used as React key
+### Issue 9: Array index used as React `key`
 
 The original code uses:
 
@@ -199,23 +296,27 @@ The original code uses:
 key={index}
 ```
 
-This is not recommended for lists where items can be reordered, added, or removed.
+Using an array index as a key can cause incorrect component reuse when items are reordered, inserted, or removed.
 
-The balances are sorted, so an item's index can change.
+This is particularly relevant here because the balances are sorted.
 
-A stable key should be used instead, for example:
+For example, after sorting, the item at index `0` may represent a different currency than it did previously.
+
+### Improvement
+
+Use a stable identifier:
 
 ```tsx
 key={`${balance.blockchain}-${balance.currency}`}
 ```
 
-An actual unique ID would be preferable if one exists.
+If the actual data has a unique ID, that would be preferable.
 
 ---
 
-### 2.9 Possible incorrect balance condition
+### Issue 10: Possible incorrect filtering condition
 
-The original code contains:
+The original code uses:
 
 ```tsx
 if (balance.amount <= 0) {
@@ -223,47 +324,132 @@ if (balance.amount <= 0) {
 }
 ```
 
-This means balances with zero or negative amounts are included.
+This includes zero and negative balances.
 
-For a wallet balance list, it is more likely that the intended condition is:
+For a wallet balance display, the likely intention is to show balances greater than zero:
 
 ```tsx
 balance.amount > 0
 ```
 
-This should ultimately be confirmed against the application's business requirements.
+However, this is a business-rule decision and should be confirmed rather than blindly changed.
+
+### Improvement
+
+If only positive balances should be displayed:
+
+```tsx
+return priority > -99 && balance.amount > 0;
+```
 
 ---
 
-### 2.10 Unnecessary `React.FC`
+### Issue 11: `React.FC` is unnecessary
 
-The original code uses:
+The original component is:
 
 ```tsx
 const WalletPage: React.FC<Props> = (props: Props) => {
 ```
 
-The `React.FC` and explicit `props: Props` are redundant.
+The `React.FC<Props>` and `props: Props` combination is redundant.
 
-A simpler approach is:
+### Improvement
+
+Use:
+
+```tsx
+const WalletPage = (props: Props) => {
+```
+
+or destructure the props directly:
 
 ```tsx
 const WalletPage = ({ ...rest }: Props) => {
 ```
 
+This is simpler and avoids unnecessary typing.
+
 ---
 
-### 2.11 Unused `children`
+### Issue 12: `children` is extracted but never used
 
-The component extracts:
+The code contains:
 
 ```tsx
 const { children, ...rest } = props;
 ```
 
-but never renders `children`.
+but `children` is never rendered.
 
-If children are not required, they should not be extracted.
+This is dead code and makes the component harder to understand.
+
+### Improvement
+
+Remove `children` unless the component is supposed to render it.
+
+---
+
+### Issue 13: Unnecessary intermediate `rows` array
+
+The code first creates:
+
+```tsx
+const rows = sortedBalances.map(...)
+```
+
+and then renders:
+
+```tsx
+{rows}
+```
+
+Creating the `rows` array isn't inherently bad, but there is no reason to keep it separate unless it improves readability or the rows need to be reused.
+
+### Improvement
+
+Render directly:
+
+```tsx
+{formattedBalances.map((balance) => (
+  <WalletRow ... />
+))}
+```
+
+This reduces unnecessary intermediate variables.
+
+---
+
+### Issue 14: Multiple array transformations
+
+The original implementation effectively performs:
+
+```text
+balances
+  → filter()
+  → sort()
+  → map() for formatting
+  → map() for React rows
+```
+
+The `filter`, `sort`, and formatting operations can be combined into one memoized transformation.
+
+The final JSX mapping is then only responsible for rendering.
+
+### Improvement
+
+Use one `useMemo()` for the expensive data transformation:
+
+```tsx
+const formattedBalances = useMemo(() => {
+  return balances
+    .filter(...)
+    .sort(...)
+    .map(...);
+}, [balances]);
+```
+
+This makes the data-processing responsibility clearer.
 
 ---
 
@@ -337,19 +523,42 @@ const WalletPage = ({ ...rest }: Props) => {
 };
 ```
 
-## 4. Summary
+---
 
-The main improvements are:
+## 4. Why This Refactoring Is Better
 
-1. Fix the undefined `lhsPriority` variable.
-2. Add `blockchain` to `WalletBalance`.
-3. Remove `any`.
-4. Remove `prices` from the `useMemo` dependency list.
-5. Move `getPriority` outside the component.
-6. Avoid recalculating unnecessary values.
-7. Use `formattedBalances` correctly.
-8. Use a stable React `key` instead of the array index.
-9. Remove unnecessary `React.FC`.
-10. Remove unused `children`.
-11. Verify the `balance.amount > 0` business logic.
-12. Combine filtering, sorting, and formatting into a single memoized transformation.
+The refactored implementation:
+
+* Keeps the component as a functional component.
+* Continues using React Hooks.
+* Keeps `useMemo` only around the expensive balance transformation.
+* Removes the unnecessary `prices` dependency from `useMemo`.
+* Removes `any`.
+* Correctly types `blockchain`.
+* Fixes the undefined `lhsPriority` variable.
+* Actually uses the formatted balance data.
+* Uses a stable React key instead of the array index.
+* Moves the static priority function outside the component.
+* Removes unnecessary `React.FC`.
+* Removes unused `children`.
+* Keeps price calculation separate because prices are needed only for rendering the USD value.
+* Makes the data transformation easier to understand and maintain.
+
+## 5. Important Performance Consideration
+
+It would be an anti-pattern to blindly add `useMemo()` and `useCallback()` everywhere.
+
+For example, this is **not automatically better**:
+
+```tsx
+const rows = useMemo(() => {
+  return formattedBalances.map(...);
+}, [formattedBalances]);
+```
+
+Mapping an ordinary array into a small number of React elements is generally cheap.
+
+The more important optimization is memoizing the **filtering and sorting**, because sorting can be considerably more computationally expensive than creating the JSX elements.
+
+Therefore, the refactoring focuses `useMemo()` on the calculation that actually benefits from memoization.
+
